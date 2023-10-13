@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ChatGPTWrapper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f7f7f7;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .input-area {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #userInput {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        #startRecordingButton, #stopRecordingButton, #submitButton {
+            padding: 10px 15px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        #loading, #responseMessage {
+            margin-top: 10px;
+            display: none;
+            font-weight: bold;
+        }
+        #loading::before {
+            content: "Loading...";
+        }
+        #audioPlayer {
+            display: none;
+            margin-top: 20px;
+        }
+
+        #recordButton {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        cursor: pointer;
+        border-radius: 5px;
+        }
+
+    #recordButton:hover {
+        background-color: #0056b3;
+    }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Ask Me Any Thing</h1>
+    </div>
+    <div class="input-area">
+        <textarea id="userInput" rows="4" placeholder="Enter your text"></textarea>
+        <button id="recordButton">Record</button>
+        <button id="submitButton">Submit</button>
+    </div>
+    <div id="loading"></div>
+    <div id="responseMessage"></div>
+    <audio id="audioPlayer" controls></audio>
+    <div id="responseText"></div>
+</div>
+
+<script>
+    const userInput = document.getElementById('userInput');
+    const recordButton = document.getElementById('recordButton');
+    const submitButton = document.getElementById('submitButton');
+    const loading = document.getElementById('loading');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const responseMessage = document.getElementById('responseMessage');
+
+    let recognition;
+    if ('webkitSpeechRecognition' in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.lang = 'en-US';
+        recognition.onresult = (event) => {
+            const transcript = event.results[event.results.length - 1][0].transcript;
+            userInput.value += transcript + ' ';
+        };
+    } else {
+        console.error('Speech recognition not supported');
+    }
+
+    // Initialize the speech synthesis object
+    const synthesis = window.speechSynthesis;
+    let isRecording = false;
+
+    recordButton.addEventListener('mousedown', () => {
+        if (!isRecording && recognition) {
+            userInput.value = ''; // Clear the previous transcript
+            recognition.start();
+            isRecording = true;
+            recordButton.classList.add('recording'); // Add a class for styling
+        }
+    });
+
+    recordButton.addEventListener('mouseup', () => {
+        if (isRecording && recognition) {
+            recognition.stop();
+            isRecording = false;
+            recordButton.classList.remove('recording'); // Remove the styling class
+        }
+    });
+
+    submitButton.addEventListener('click', async () => {
+        const textToSend = userInput.value.trim();
+        const apiUrl = 'http://localhost:9090/chat';
+
+        if (!apiUrl) {
+            alert('Please enter a valid URL.');
+            return;
+        }
+
+        if (textToSend) {
+            loading.style.display = 'block';
+            submitButton.disabled = true;
+            responseMessage.style.display = 'none';
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userInput: textToSend
+                    })
+                });
+
+                loading.style.display = 'none';
+
+                if (response.ok) {
+                    const responseBody = await response.text();
+
+
+                    // Highlight the response text and display it
+                    const responseTextElement = document.getElementById('responseText');
+                    responseTextElement.textContent = responseBody;
+                    responseTextElement.style.backgroundColor = '#0056b3'; // Apply your highlighting style here
+
+                    // Synthesize the response text into speech
+                    const responseUtterance = new SpeechSynthesisUtterance(responseBody);
+                    synthesis.speak(responseUtterance);
+
+                    // Display the response audio and message
+
+                    audioPlayer.controls = true;
+                    audioPlayer.style.display = 'block';
+                    responseMessage.textContent = 'Response received successfully.';
+                    responseMessage.style.color = 'green';
+                } else {
+                    const errorMessage = await response.text();
+                    throw new Error(errorMessage);
+                }
+            } catch (error) {
+                console.error('Error sending POST request:', error);
+                responseMessage.textContent = `Error in response: ${error.message}`;
+                responseMessage.style.color = 'red';
+            } finally {
+                responseMessage.style.display = 'block';
+                submitButton.disabled = false;
+            }
+        }
+    });
+</script>
+</body>
+</html>
